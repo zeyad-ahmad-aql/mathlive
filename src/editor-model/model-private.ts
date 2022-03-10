@@ -128,33 +128,33 @@ export class ModelPrivate implements Model {
         const first = this.at(selRange[0]);
         const last = this.at(selRange[1]);
 
-        const commonAncestor = Atom.commonAncestor(first, last);
-        if (
-          commonAncestor?.type === 'array' &&
-          first.parent === commonAncestor &&
-          last.parent === commonAncestor
-        ) {
-          // 3a/ If the parent of all the ranges is an array...
-          // Make a rectangular selection based on the col/row of the anchor
-          // and cursor
-          // @todo array
+        // const commonAncestor = Atom.commonAncestor(first, last);
+        // if (
+        //   commonAncestor?.type === 'array' &&
+        //   first.parent === commonAncestor &&
+        //   last.parent === commonAncestor
+        // ) {
+        //   // 3a/ If the parent of all the ranges is an array...
+        //   // Make a rectangular selection based on the col/row of the anchor
+        //   // and cursor
+        //   // @todo array
+        // } else {
+        this._selection = {
+          ranges: [[this.offsetOf(first), this.offsetOf(last)]],
+          direction: value.direction,
+        };
+        // 3b.3/ Adjust the position to match the selection
+        if (value.direction === 'backward') {
+          this._position = this._selection.ranges[0][0];
         } else {
-          this._selection = {
-            ranges: [[this.offsetOf(first), this.offsetOf(last)]],
-            direction: value.direction,
-          };
-          // 3b.3/ Adjust the position to match the selection
-          if (value.direction === 'backward') {
-            this._position = this._selection.ranges[0][0];
-          } else {
-            this._position = this._selection.ranges[0][1];
-          }
-
-          console.assert(
-            this._position >= 0 && this._position <= this.lastOffset
-          );
+          this._position = this._selection.ranges[0][1];
         }
+
+        console.assert(
+          this._position >= 0 && this._position <= this.lastOffset
+        );
       }
+      // }
     });
   }
 
@@ -232,7 +232,7 @@ export class ModelPrivate implements Model {
    * Return the atoms in a range.
    * getAtoms([3, 5]) -> atoms 4 and 5
    * getAtoms(3, 5) -> atoms 4 and 5
-   * getAtom(3) -> all atoms, starting at 4 till lastOffset, then 0 to 3
+   * getAtoms(3) -> all atoms, starting at 4 till lastOffset, then 0 to 3
    * getAtoms(3, -1) -> all atoms after 3 till lastOffset
    * getAtoms(-5, -2) -> all atoms between lastOffset - 4 and lastOffset - 1
    * Note that an atom with children is included in the result only if
