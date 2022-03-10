@@ -32,6 +32,7 @@ import { Stylesheet, inject as injectStylesheet } from '../common/stylesheet';
 import POPOVER_STYLESHEET from '../../css/popover.less';
 // @ts-ignore-error
 import CORE_STYLESHEET from '../../css/core.less';
+import { ModelPrivate } from './model';
 
 let POPOVER_STYLESHEET_HASH: string | undefined = undefined;
 let gPopoverStylesheet: Stylesheet | null = null;
@@ -297,7 +298,7 @@ function getNote(symbol: string): string {
   return result;
 }
 
-function latexToMarkup(latex: string): string {
+function latexToMarkup(model: ModelPrivate, latex: string): string {
   const root = new Atom('root', { mode: 'math' });
   root.body = typeset(
     parseLatex(latex, {
@@ -313,6 +314,7 @@ function latexToMarkup(latex: string): string {
         root.render(
           new Context(
             {
+              model,
               macros: getMacros(),
               registers: getDefaultRegisters(),
               smartFence: false,
@@ -341,7 +343,7 @@ export function showPopoverWithLatex(
     return;
   }
   const command = latex;
-  const commandMarkup = latexToMarkup(latex);
+  const commandMarkup = latexToMarkup(mf.model, latex);
   const commandNote = getNote(command);
   const keybinding = getKeybindingsForCommand(mf.keybindings, command).join(
     '<br>'

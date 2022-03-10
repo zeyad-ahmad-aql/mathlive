@@ -1,7 +1,7 @@
 /* eslint no-console:0 */
 import '../core/atom';
 import { MacroDictionary, getMacros } from '../core-definitions/definitions';
-import { AutoRenderOptions } from '../public/mathlive';
+import { AutoRenderOptions, MathfieldElement } from '../public/mathlive';
 import { ErrorListener, ParserErrorCode, Registers } from '../public/core';
 import { loadFonts } from '../core/fonts';
 import { inject as injectStylesheet } from '../common/stylesheet';
@@ -10,6 +10,7 @@ import coreStylesheet from '../../css/core.less';
 import { parseMathString } from '../editor/parse-math-string';
 import { throwIfNotInBrowser } from '../common/capabilities';
 import { hashCode } from '../common/hash-code';
+import { ModelPrivate } from '../editor/model';
 
 export type AutoRenderOptionsPrivate = AutoRenderOptions & {
   /** A function that will convert any LaTeX found to
@@ -24,7 +25,8 @@ export type AutoRenderOptionsPrivate = AutoRenderOptions & {
       registers?: Registers;
       onError?: ErrorListener<ParserErrorCode>;
       format?: string;
-    }
+    },
+    model?: ModelPrivate
   ) => string;
 
   /**

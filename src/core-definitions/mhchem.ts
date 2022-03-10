@@ -38,6 +38,8 @@ class ChemAtom extends Atom {
       newList: true,
     });
 
+    setTimeout(() => this.handlePhantomLastAtom(context), 50);
+
     if (this.caret) box.caret = this.caret;
     // Need to bind the group so that the DOM element can be matched
     // and the atom iterated recursively. Otherwise, it behaves
@@ -46,6 +48,26 @@ class ChemAtom extends Atom {
   }
   serialize(_options: ToLatexOptions): string {
     return this.verbatimLatex;
+  }
+
+  handlePhantomLastAtom(context: Context): void {
+    // if this is the last atom of it's parent
+    if (this.parent?.lastChild === this) {
+      const groupAtom = this.body[1];
+      // checking if last atom in chemical compound is SubsupAtom and before it is a PhantomAtom Group
+      if (
+        groupAtom?.body[groupAtom?.body?.length - 1].type === 'msubsup' &&
+        groupAtom?.body[groupAtom?.body?.length - 2].type === 'group'
+      ) {
+        const mathfield = context.model.mathfield;
+        // delete last phantom atom group so it won't overflow on windows
+        const toHideAtom = groupAtom?.body[groupAtom?.body?.length - 2]; // Phantom Group
+        const toHideEl = mathfield.shadowRoot?.querySelector(
+          `[data-atom-id="${toHideAtom.id}"]`
+        );
+        if (toHideEl) (toHideEl as HTMLElement).style.display = 'none';
+      }
+    }
   }
 }
 
@@ -251,11 +273,14 @@ var mhchemParser = {
       'x': /^x/,
       'x$': /^x$/,
       'i$': /^i$/,
-      'letters': /^(?:[a-zA-Z\u03B1-\u03C9\u0391-\u03A9?@]|(?:\\(?:alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|omicron|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Upsilon|Phi|Psi|Omega)(?:\s+|\{\}|(?![a-zA-Z]))))+/,
-      '\\greek': /^\\(?:alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|omicron|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Upsilon|Phi|Psi|Omega)(?:\s+|\{\}|(?![a-zA-Z]))/,
+      'letters':
+        /^(?:[a-zA-Z\u03B1-\u03C9\u0391-\u03A9?@]|(?:\\(?:alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|omicron|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Upsilon|Phi|Psi|Omega)(?:\s+|\{\}|(?![a-zA-Z]))))+/,
+      '\\greek':
+        /^\\(?:alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|omicron|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Upsilon|Phi|Psi|Omega)(?:\s+|\{\}|(?![a-zA-Z]))/,
       'one lowercase latin letter $': /^(?:([a-z])(?:$|[^a-zA-Z]))$/,
       '$one lowercase latin letter$ $': /^\$(?:([a-z])(?:$|[^a-zA-Z]))\$$/,
-      'one lowercase greek letter $': /^(?:\$?[\u03B1-\u03C9]\$?|\$?\\(?:alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|omicron|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega)\s*\$?)(?:\s+|\{\}|(?![a-zA-Z]))$/,
+      'one lowercase greek letter $':
+        /^(?:\$?[\u03B1-\u03C9]\$?|\$?\\(?:alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|omicron|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega)\s*\$?)(?:\s+|\{\}|(?![a-zA-Z]))$/,
       'digits': /^[0-9]+/,
       '-9.,9': /^[+\-]?(?:[0-9]+(?:[,.][0-9]+)?|[0-9]*(?:\.[0-9]+))/,
       '-9.,9 no missing 0': /^[+\-]?[0-9]+(?:[.,][0-9]+)?/,
@@ -432,7 +457,8 @@ var mhchemParser = {
       '- orbital overlap': /^-(?=(?:[spd]|sp)(?:$|[\s,;\)\]\}]))/,
       '-': /^-/,
       'pm-operator': /^(?:\\pm|\$\\pm\$|\+-|\+\/-)/,
-      'operator': /^(?:\+|(?:[\-=<>]|<<|>>|\\approx|\$\\approx\$)(?=\s|$|-?[0-9]))/,
+      'operator':
+        /^(?:\+|(?:[\-=<>]|<<|>>|\\approx|\$\\approx\$)(?=\s|$|-?[0-9]))/,
       'arrowUpDown': /^(?:v|\(v\)|\^|\(\^\))(?=$|[\s,;\)\]\}])/,
       '\\bond{(...)}': function (input) {
         return mhchemParser.patterns.findObserveGroups(

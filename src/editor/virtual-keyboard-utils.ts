@@ -36,6 +36,7 @@ import { throwIfNotInBrowser } from '../common/capabilities';
 import { hashCode } from '../common/hash-code';
 import { Selector } from '../public/commands';
 import { MathfieldPrivate } from './mathfield';
+import { ModelPrivate } from './model';
 
 let gScrim: Scrim | null = null;
 
@@ -222,6 +223,10 @@ export class VirtualKeyboard implements VirtualKeyboardInterface {
     this._element?.remove();
     this._element = undefined;
     this.options = options;
+  }
+
+  get mathfield(): MathfieldPrivate | undefined {
+    return this._mathfield;
   }
 
   get element(): HTMLDivElement | undefined {
@@ -1250,7 +1255,11 @@ const LAYERS = {
         </div>`,
 };
 
-function latexToMarkup(latex: string, arg: (arg: string) => string): string {
+function latexToMarkup(
+  model: ModelPrivate,
+  latex: string,
+  arg: (arg: string) => string
+): string {
   // Since we don't have preceding atoms, we'll interpret #@ as a placeholder
   latex = latex.replace(/(^|[^\\])#@/g, '$1#?');
 
@@ -1270,6 +1279,7 @@ function latexToMarkup(latex: string, arg: (arg: string) => string): string {
         root.render(
           new Context(
             {
+              model,
               macros: getMacros(),
               registers: getDefaultRegisters(),
               smartFence: false,
@@ -1407,6 +1417,7 @@ export function makeKeycap(
     // Display
     if (element.getAttribute('data-latex')) {
       html = latexToMarkup(
+        keyboard.mathfield?.model!,
         element.getAttribute('data-latex')!.replace(/&quot;/g, '"'),
         () => '\\placeholder{}'
       );
@@ -1415,6 +1426,7 @@ export function makeKeycap(
       element.innerHTML === ''
     ) {
       html = latexToMarkup(
+        keyboard.mathfield?.model!,
         element.getAttribute('data-insert')!.replace(/&quot;/g, '"'),
         () => '\\placeholder{}'
       );

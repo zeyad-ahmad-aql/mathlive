@@ -40,6 +40,7 @@ import { isBrowser, throwIfNotInBrowser } from './common/capabilities';
 export { MathfieldElement } from './public/mathfield-element';
 
 import { version as computeEngineVersion } from '@cortex-js/compute-engine';
+import { ModelPrivate } from './editor/model';
 
 export {
   serialize as serializeMathJson,
@@ -63,7 +64,8 @@ export function convertLatexToMarkup(
     backgroundColorMap?: (name: string) => string | undefined;
     onError?: ErrorListener<ParserErrorCode>;
     format?: string;
-  }
+  },
+  model?: ModelPrivate
 ): string {
   options = options ?? {};
   options.mathstyle = options.mathstyle ?? 'displaystyle';
@@ -98,6 +100,7 @@ export function convertLatexToMarkup(
   const box = root.render(
     new Context(
       {
+        model,
         macros: options.macros,
         registers: getDefaultRegisters(),
         smartFence: false,

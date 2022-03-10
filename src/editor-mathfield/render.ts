@@ -106,6 +106,7 @@ export function render(
   const base = model.root.render(
     new Context(
       {
+        model,
         macros: mathfield.options.macros,
         registers: mathfield.options.registers,
         atomIdsSettings: {

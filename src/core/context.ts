@@ -14,12 +14,14 @@ import { D, Dc, Mathstyle, MathstyleName, MATHSTYLES } from './mathstyle';
 import { Box } from './box';
 import { convertDimensionToEm } from './registers-utils';
 import { PlaceholderAtom } from '../core-atoms/placeholder';
+import { ModelPrivate } from '../editor-model/model-private';
 
 // Using boxes and glue in TeX and LaTeX:
 // https://www.math.utah.edu/~beebe/reports/2009/boxes.pdf
 
 export interface ContextInterface {
   macros?: MacroDictionary;
+  model?: ModelPrivate;
   registers: Registers;
   atomIdsSettings?: {
     overrideID?: string;
@@ -67,6 +69,7 @@ export type PrivateStyle = Style & {
  */
 export class Context implements ContextInterface {
   macros: MacroDictionary;
+  readonly model?: ModelPrivate;
 
   // If not undefined, unique IDs should be generated for each box so they can
   // be mapped back to an atom.
@@ -117,6 +120,8 @@ export class Context implements ContextInterface {
       | ''
       | 'auto'
   ) {
+    this.model = parent.model;
+
     // If we don't have a parent context, we must provide an initial
     // mathstyle and fontsize
     console.assert(parent instanceof Context || style?.fontSize !== undefined);

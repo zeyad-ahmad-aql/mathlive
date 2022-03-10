@@ -678,6 +678,11 @@ export class MathfieldElement extends HTMLElement implements Mathfield {
       true
     );
   }
+
+  get mathfield(): MathfieldPrivate | null {
+    return this._mathfield;
+  }
+
   getPlaceholderField(placeholderId: string): Mathfield | undefined {
     return this._mathfield?.getPlaceholderField(placeholderId);
   }
