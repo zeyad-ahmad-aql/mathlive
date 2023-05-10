@@ -1,7 +1,6 @@
 import { getKeybindingMarkup } from '../editor/keybindings';
 import type { MathfieldPrivate } from './mathfield-private';
 
-import { hashCode } from '../common/hash-code';
 import { injectStylesheet, releaseStylesheet } from '../common/stylesheet';
 
 // @ts-ignore-error
@@ -70,7 +69,8 @@ function createKeystrokeCaption(): HTMLElement {
 }
 
 export function disposeKeystrokeCaption(): void {
+  if (!document.getElementById('mathlive-keystroke-caption-panel')) return;
   releaseSharedElement('mathlive-keystroke-caption-panel');
   releaseStylesheet('mathlive-core-stylesheet');
-  releaseStylesheet('mathlive-keystroke-caption-panel');
+  releaseStylesheet('mathlive-keystroke-caption-stylesheet');
 }

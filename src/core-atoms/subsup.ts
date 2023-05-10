@@ -1,17 +1,12 @@
 import type { Style } from '../public/core-types';
 
-import {
-  Atom,
-  AtomJson,
-  NAMED_BRANCHES,
-  ToLatexOptions,
-} from '../core/atom-class';
+import { Atom, NAMED_BRANCHES, ToLatexOptions } from '../core/atom-class';
 import { Box } from '../core/box';
 import { Context } from '../core/context';
 
 export class SubsupAtom extends Atom {
   constructor(options?: { style?: Style }) {
-    super('subsup', options);
+    super({ type: 'subsup', style: options?.style });
     this.subsupPlacement = 'auto';
   }
 
@@ -21,10 +16,6 @@ export class SubsupAtom extends Atom {
       if (json[branch]) result.setChildren(json[branch], branch);
 
     return result;
-  }
-
-  toJson(): AtomJson {
-    return super.toJson();
   }
 
   render(context: Context): Box {
@@ -40,9 +31,9 @@ export class SubsupAtom extends Atom {
     return this.attachSupsub(context, {
       base: phantom,
       isCharacterBox: leftSibling.isCharacterBox(),
-      // Set to 'skip' so that it is skipped during inter-box spacing
+      // Set to 'ignore' so that it is ignored during inter-box spacing
       // adjustment.
-      type: 'skip',
+      type: 'ignore',
     });
   }
 

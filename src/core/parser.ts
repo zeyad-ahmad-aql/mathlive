@@ -1,4 +1,4 @@
-import { Atom, BBoxParameter, serializeAtoms } from './atom-class';
+import { Atom, BBoxParameter } from './atom-class';
 
 import {
   Argument,
@@ -19,7 +19,7 @@ import { SubsupAtom } from '../core-atoms/subsup';
 import { TextAtom } from '../core-atoms/text';
 
 import { Mode } from './modes-utils';
-import { tokenize, tokensToString } from './tokenizer';
+import { joinLatex, tokenize, tokensToString } from './tokenizer';
 import type {
   Style,
   ParseMode,
@@ -560,15 +560,16 @@ export class Parser {
     };
   }
 
-  scanNumberOrRegister(): LatexValue | null {
+  scanRegister(): LatexValue | null {
     const index = this.index;
 
     const number = this.scanNumber(false);
 
     this.skipWhitespace();
     if (this.match('\\relax')) return number;
+
     let negative = false;
-    if (number !== null) {
+    if (number === null) {
       while (true) {
         const s = this.peek();
         if (s === '-') negative = !negative;
@@ -616,11 +617,19 @@ export class Parser {
   }
 
   scanValue(): LatexValue | null {
-    const value = this.scanNumberOrRegister();
-    if (value) return value;
+    const register = this.scanRegister();
+    if (register) return register;
+
+    const index = this.index;
 
     const glue = this.scanGlueOrDimen();
-    if (glue) return glue;
+    if (glue && ('unit' in glue || ('glue' in glue && 'unit' in glue.glue)))
+      return glue;
+
+    this.index = index;
+
+    const number = this.scanNumber();
+    if (number) return number;
 
     if (this.end() || !isLiteral(this.peek())) return null;
 
@@ -735,30 +744,21 @@ export class Parser {
    * Scan a `\(...\)` or `\[...\]` sequence
    * @return group for the sequence or null
    */
-  scanModeSet(): Atom | null {
+  scanModeSet(): Atom[] | null {
     let mathstyle: MathstyleName | undefined = undefined;
     if (this.match('\\(')) mathstyle = 'textstyle';
     if (!mathstyle && this.match('\\[')) mathstyle = 'displaystyle';
     if (!mathstyle) return null;
     this.beginContext({ mode: 'math', mathstyle });
 
-    const result = new GroupAtom(
-      this.scan(
-        (token) => token === (mathstyle === 'displaystyle' ? '\\]' : '\\)')
-      ),
-      {
-        mathstyleName: mathstyle,
-        latexOpen: mathstyle === 'displaystyle' ? '\\[' : '\\(',
-        latexClose: mathstyle === 'displaystyle' ? '\\]' : '\\)',
-        boxType: 'inner',
-      }
+    const result = this.scan(
+      (token) => token === (mathstyle === 'displaystyle' ? '\\]' : '\\)')
     );
 
     if (!this.match(mathstyle === 'displaystyle' ? '\\]' : '\\)'))
       this.onError({ code: 'unbalanced-mode-shift' });
 
     this.endContext();
-    if (result.hasEmptyBranch('body')) return null;
 
     return result;
   }
@@ -766,7 +766,7 @@ export class Parser {
   /**
    * Scan a `$...$` or `$$...$$` sequence
    */
-  scanModeShift(): Atom | null {
+  scanModeShift(): Atom[] | null {
     let final: Token = '';
     if (this.match('<$>')) final = '<$>';
     if (!final && this.match('<$$>')) final = '<$$>';
@@ -777,20 +777,11 @@ export class Parser {
       mathstyle: '<$>' ? 'textstyle' : 'displaystyle',
     });
 
-    const result = new GroupAtom(
-      this.scan((token: Token) => token === final),
-      {
-        mathstyleName: final === '<$>' ? 'textstyle' : 'displaystyle',
-        latexOpen: final === '<$>' ? '$ ' : '$$ ',
-        latexClose: final === '<$>' ? ' $' : ' $$',
-        boxType: 'inner',
-      }
-    );
+    const result = this.scan((token) => token === final);
 
     if (!this.match(final)) this.onError({ code: 'unbalanced-mode-shift' });
 
     this.endContext();
-    if (result.hasEmptyBranch('body')) return null;
     return result;
   }
 
@@ -984,16 +975,19 @@ export class Parser {
    * group (i.e. `{}`).
    */
   scanGroup(): Atom | null {
+    const initialIndex = this.index;
     if (this.parseMode === 'text') {
       if (this.match('<{>')) {
-        return new Atom('text', {
+        return new Atom({
+          type: 'text',
           value: '{',
           mode: 'text',
           style: this.style,
         });
       }
       if (this.match('<}>')) {
-        return new Atom('text', {
+        return new Atom({
+          type: 'text',
           value: '}',
           mode: 'text',
           style: this.style,
@@ -1010,11 +1004,14 @@ export class Parser {
     // inter-box spacing. Empty groups (`{}`) do not.
 
     const result = new GroupAtom(body, {
-      boxType: body.length > 1 ? 'ord' : 'skip',
+      boxType: body.length > 1 ? 'ord' : 'ignore',
       mode: this.parseMode,
       latexOpen: '{',
       latexClose: '}',
     });
+    result.verbatimLatex = tokensToString(
+      this.tokens.slice(initialIndex, this.index)
+    );
 
     return result;
   }
@@ -1168,7 +1165,8 @@ export class Parser {
         if (this.match("'")) {
           // A single quote, twice, is equivalent to '^{\doubleprime}'
           this.lastSubsupAtom().addChild(
-            new Atom('mord', {
+            new Atom({
+              type: 'mord',
               command: '\\doubleprime',
               mode: 'math',
               value: '\u2032\u2032', // "\u2033" displays too high
@@ -1178,7 +1176,8 @@ export class Parser {
         } else {
           // A single quote (prime) is equivalent to '^{\prime}'
           this.lastSubsupAtom().addChild(
-            new Atom('mord', {
+            new Atom({
+              type: 'mord',
               command: '\\prime',
               mode: 'math',
               value: '\u2032',
@@ -1254,7 +1253,7 @@ export class Parser {
     info: Partial<FunctionDefinition>
   ): [ParseMode | undefined, (null | Argument)[]] {
     if (!info?.params) return [undefined, []];
-    let explicitGroup: ParseMode | undefined = undefined;
+    let deferredArg: ParseMode | undefined = undefined;
     const args: (null | Argument)[] = [];
     let i = info.infix ? 2 : 0;
     while (i < info.params.length) {
@@ -1271,16 +1270,15 @@ export class Parser {
       } else if (parameter.isOptional)
         args.push(this.scanOptionalArgument(parameter.type));
       else if (parameter.type.endsWith('*')) {
-        // For example 'math*'.
-        // In this case, indicate that a 'yet-to-be-parsed'
-        // argument (an 'explicit group') is present
-        explicitGroup = parameter.type.slice(0, -1) as ParseMode;
+        // Indicate that a 'yet-to-be-parsed' argument is present
+        // which should be accounted for *after* the command has been processed.
+        deferredArg = parameter.type.slice(0, -1) as ParseMode;
       } else args.push(this.scanArgument(parameter.type));
 
       i += 1;
     }
 
-    return [explicitGroup, args];
+    return [deferredArg, args];
   }
 
   scanSymbolOrLiteral(): Atom[] | null {
@@ -1316,13 +1314,14 @@ export class Parser {
         const style = { ...this.style };
         if (info.variant) style.variant = info.variant;
 
-        result = new Atom(info.type, {
+        result = new Atom({
+          type: info.type,
           command: token,
           style,
           value: String.fromCodePoint(info.codepoint),
           mode: this.parseMode,
+          verbatimLatex: token,
         });
-        result.verbatimLatex = token;
       } else if (info.applyMode || info.applyStyle || info.infix) {
         // The command modifies the mode or style: can't use here
         this.onError({ code: 'invalid-command', arg: token });
@@ -1371,7 +1370,8 @@ export class Parser {
   scanArgument(type: ArgumentType): null | Argument;
   scanArgument(type: ArgumentType): null | Argument {
     this.skipFiller();
-    if (type === 'auto') type = this.parseMode;
+    const mode = this.parseMode;
+    if (type === 'auto') type = mode;
 
     //
     // Argument without braces
@@ -1381,17 +1381,20 @@ export class Parser {
       if (type === 'value') return this.scanValue();
       if (type === 'delim') return this.scanDelim() ?? '.';
       if (type === 'expression') return this.scanExpression();
-      if (type === 'math') return this.scanSymbolOrLiteral();
-      if (type === 'text') {
-        this.beginContext({ mode: 'text' });
+      if (type === 'math') {
+        if (type !== mode) this.beginContext({ mode: 'math' });
         const result = this.scanSymbolOrLiteral();
-        this.endContext();
+        if (type !== mode) this.endContext();
+        return result;
+      }
+      if (type === 'text') {
+        if (type !== mode) this.beginContext({ mode: 'text' });
+        const result = this.scanSymbolOrLiteral();
+        if (type !== mode) this.endContext();
         return result;
       }
       if (type === 'balanced-string') return null;
-
-      debugger;
-
+      console.assert(false);
       return null;
     }
 
@@ -1494,7 +1497,7 @@ export class Parser {
       // default value is legacy, ignored if there is a body
       // We need to check if second argument is `correct`, `incorrect` or to be interpreted as math
       const defaultValue = this.scanOptionalArgument('math') as Atom[];
-      const defaultAsString = serializeAtoms(defaultValue, {
+      const defaultAsString = Atom.serialize(defaultValue, {
         defaultMode: 'math',
       });
       let defaultAtoms = [] as Atom[];
@@ -1533,28 +1536,27 @@ export class Parser {
       return [new PlaceholderAtom({ mode: this.parseMode, style: this.style })];
     }
 
-    let result: Atom | null = null;
-
     if (command === '\\char') {
       const initialIndex = this.index;
       let codepoint = this.scanNumber(true)?.number ?? NaN;
       if (!Number.isFinite(codepoint) || codepoint < 0 || codepoint > 0x10ffff)
         codepoint = 0x2753; // BLACK QUESTION MARK
 
-      result = new Atom(this.parseMode === 'math' ? 'mord' : 'text', {
-        command: '\\char',
-        mode: this.parseMode,
-        value: String.fromCodePoint(codepoint),
-        verbatimLatex:
-          '\\char' +
-          tokensToString(this.tokens.slice(initialIndex, this.index)),
-      });
-
-      return [result];
+      return [
+        new Atom({
+          type: this.parseMode === 'math' ? 'mord' : 'text',
+          command: '\\char',
+          mode: this.parseMode,
+          value: String.fromCodePoint(codepoint),
+          verbatimLatex:
+            '\\char' +
+            tokensToString(this.tokens.slice(initialIndex, this.index)),
+        }),
+      ];
     }
 
     // Is this a macro?
-    result = this.scanMacro(command);
+    let result = this.scanMacro(command);
     if (result) return [result];
 
     // This wasn't a macro, so let's see if it's a regular command
@@ -1566,7 +1568,8 @@ export class Parser {
       if (this.parseMode === 'text') {
         return [...command].map(
           (c) =>
-            new Atom('text', {
+            new Atom({
+              type: 'text',
               value: c,
               mode: 'text',
               style: this.style,
@@ -1584,7 +1587,8 @@ export class Parser {
       // Override the variant if an explicit variant is provided
       if (info.variant) style.variant = info.variant;
 
-      result = new Atom(info.type, {
+      result = new Atom({
+        type: info.type,
         command,
         style,
         value: String.fromCodePoint(info.codepoint),
@@ -1661,7 +1665,8 @@ export class Parser {
         // Merge the new style info with the current style
         this.style = style;
       } else {
-        result = new Atom('mord', {
+        result = new Atom({
+          type: 'mord',
           command: info.command ?? command,
           style: { ...this.style },
           value: command,
@@ -1669,25 +1674,33 @@ export class Parser {
         });
       }
     }
+
+    if (!result) return null;
+
     if (
       result instanceof Atom &&
       result.verbatimLatex === undefined &&
       !/^\\(llap|rlap|class|cssId|htmlData)$/.test(command)
     ) {
-      result.verbatimLatex =
-        (result.command ?? '') +
-        tokensToString(this.tokens.slice(initialIndex, this.index));
-      if (result.verbatimLatex.length === 0) result.verbatimLatex = undefined;
+      // We have to use `joinLatex` to correctly handle the case of
+      // modal commands, e.g. `{\em m}`
+      const verbatim = joinLatex([
+        command,
+        tokensToString(this.tokens.slice(initialIndex, this.index)),
+      ]);
+      if (verbatim) result.verbatimLatex = verbatim;
+    }
 
-      if (result.isFunction && this.smartFence) {
-        // The command was a function that may be followed by
-        // an argument, like `\sin(`
-        const smartFence = this.scanSmartFence();
-        if (smartFence) return [result, smartFence];
-      }
-    } else if (result?.verbatimLatex === null) result.verbatimLatex = undefined;
+    if (result.verbatimLatex === null) result.verbatimLatex = undefined;
 
-    return result ? [result] : null;
+    if (result.isFunction && this.smartFence) {
+      // The command was a function that may be followed by
+      // an argument, like `\sin(`
+      const smartFence = this.scanSmartFence();
+      if (smartFence) return [result, smartFence];
+    }
+
+    return [result];
   }
 
   scanSymbolCommandOrLiteral(): Atom[] | null {

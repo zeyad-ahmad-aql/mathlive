@@ -5,6 +5,7 @@ import { Box } from '../core/box';
 import { Context } from '../core/context';
 import { joinLatex, latexCommand } from '../core/tokenizer';
 import { AXIS_HEIGHT } from '../core/font-metrics';
+import { getDefinition } from '../core-definitions/definitions-utils';
 
 /**
  * Operators are handled in the TeXbook pg. 443-444, rule 13(a).
@@ -22,7 +23,6 @@ export class OperatorAtom extends Atom {
       isExtensibleSymbol?: boolean;
       isFunction?: boolean;
       hasArgument?: boolean;
-      captureSelection?: boolean;
       // Unlike `style`, `variant` and `variantStyle` are applied to the
       // content of this atom, but not propagated to the next atom
       variant?: Variant;
@@ -31,15 +31,17 @@ export class OperatorAtom extends Atom {
       style?: Style;
     }
   ) {
-    super(options.type ?? 'mop', {
+    super({
+      type: options.type ?? 'mop',
       command,
       style: options.style,
       isFunction: options?.isFunction,
     });
     if (typeof symbol === 'string') this.value = symbol;
-    else this.body = symbol;
-
-    this.captureSelection = options.captureSelection ?? false;
+    else {
+      this.body = symbol;
+      this.captureSelection = true;
+    }
 
     this.hasArgument = options.hasArgument ?? false;
     this.variant = options?.variant;
@@ -150,6 +152,11 @@ export class OperatorAtom extends Atom {
   }
 
   serialize(options: ToLatexOptions): string {
+    if (!options.expandMacro && typeof this.verbatimLatex === 'string')
+      return this.verbatimLatex;
+    const def = getDefinition(this.command, this.mode);
+    if (def?.serialize) return def.serialize(this, options);
+
     // ZERO-WIDTH?
     if (this.value === '\u200B') return this.supsubToLatex(options);
 

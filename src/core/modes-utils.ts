@@ -1,5 +1,3 @@
-import type { GroupAtom } from '../core-atoms/group';
-
 import { Atom, ToLatexOptions } from './atom-class';
 import type { Box } from './box';
 import type {
@@ -15,6 +13,7 @@ import {
   TokenDefinition,
   getDefinition,
 } from '../core-definitions/definitions-utils';
+import { joinLatex } from './tokenizer';
 
 export abstract class Mode {
   static _registry: Record<string, Mode> = {};
@@ -34,12 +33,15 @@ export abstract class Mode {
     );
   }
 
-  // `run` should be a run (sequence) of atoms all with the same
-  // mode
-  static serialize(run: Atom[], options: ToLatexOptions): string[] {
-    console.assert(run.length > 0);
-    const mode = Mode._registry[run[0].mode];
-    return mode.serialize(run, options);
+  static serialize(atoms: Atom[] | undefined, options: ToLatexOptions): string {
+    if (!atoms || atoms.length === 0) return '';
+
+    const tokens: string[] = [];
+    for (const run of getModeRuns(atoms)) {
+      const mode = Mode._registry[run[0].mode];
+      tokens.push(...mode.serialize(run, options));
+    }
+    return joinLatex(tokens);
   }
 
   static getFont(
@@ -113,7 +115,7 @@ export function getModeRuns(atoms: Atom[]): Atom[][] {
  */
 export function getPropertyRuns(
   atoms: Atom[],
-  property: keyof Style | 'cssClass'
+  property: keyof Style
 ): Atom[][] {
   const result: Atom[][] = [];
   let run: Atom[] = [];
@@ -125,8 +127,6 @@ export function getPropertyRuns(
         value = atom.style.variant;
         if (atom.style.variantStyle && atom.style.variantStyle !== 'up')
           value += '-' + atom.style.variantStyle;
-      } else if (property === 'cssClass') {
-        if (atom.type === 'group') value = (atom as GroupAtom).customClass;
       } else value = atom.style[property];
 
       if (value === currentValue) {

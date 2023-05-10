@@ -1,5 +1,3 @@
-import { isArray } from '../common/types';
-
 import type {
   ParseMode,
   Style,
@@ -11,7 +9,7 @@ import { PT_PER_EM, X_HEIGHT } from './font-metrics';
 import { boxType, Box } from './box';
 import { makeLimitsStack, VBox } from './v-box';
 import { joinLatex, latexCommand } from './tokenizer';
-import { getModeRuns, getPropertyRuns, Mode } from './modes-utils';
+import { Mode } from './modes-utils';
 import {
   Argument,
   argumentsToJson,
@@ -30,7 +28,7 @@ import { PrivateStyle, BoxType } from './types';
  * that is difficult/impossible to represent in pure LaTeX, for example
  * the state/content of empty branches.
  */
-export type AtomJson = { type: AtomType; [key: string]: any };
+export type AtomJson = { type?: AtomType; [key: string]: any };
 
 /**
  * Each atom can have one or more "branches" of child atoms.
@@ -172,7 +170,7 @@ export class Atom {
   // (the corresponding DOM element has a `data-atom-id` attribute)
   id: string | undefined = undefined;
 
-  type: AtomType;
+  type: AtomType | undefined;
 
   // LaTeX command ('\sin') or character ('a')
   command: string;
@@ -230,11 +228,11 @@ export class Atom {
   // Conversely, when the caret reaches the last position inside
   // this element, (moving left to right) it automatically moves to the one
   // outside the element.
-  skipBoundary = false;
+  skipBoundary: boolean;
 
   // If true, the children of this atom cannot be selected and should be handled
   // as a unit. Used by the `\enclose` annotations, for example.
-  captureSelection = false;
+  captureSelection: boolean;
 
   // If true, this atom should be highlighted when it contains the caret
   displayContainsHighlight: boolean;
@@ -254,22 +252,22 @@ export class Atom {
   containsCaret: boolean;
   caret: ParseMode | undefined;
 
-  constructor(
-    type: AtomType,
-    options?: {
-      command?: string;
-      args?: (Argument | null)[];
-      mode?: ParseMode;
-      value?: string;
-      isFunction?: boolean;
-      limits?: 'auto' | 'over-under' | 'adjacent';
-      style?: Style;
-      displayContainsHighlight?: boolean;
-      captureSelection?: boolean;
-      verbatimLatex?: string | null;
-    }
-  ) {
-    this.type = type;
+  constructor(options?: {
+    type?: AtomType;
+    command?: string;
+    args?: (Argument | null)[];
+    mode?: ParseMode;
+    value?: string;
+    body?: Atom[];
+    isFunction?: boolean;
+    limits?: 'auto' | 'over-under' | 'adjacent';
+    style?: Style;
+    displayContainsHighlight?: boolean;
+    captureSelection?: boolean;
+    skipBoundary?: boolean;
+    verbatimLatex?: string | null;
+  }) {
+    this.type = options?.type;
     if (typeof options?.value === 'string') this.value = options.value;
     this.command = options?.command ?? this.value ?? '';
     this.mode = options?.mode ?? 'math';
@@ -278,8 +276,10 @@ export class Atom {
     this.style = { ...options?.style } ?? {};
     this.displayContainsHighlight = options?.displayContainsHighlight ?? false;
     this.captureSelection = options?.captureSelection ?? false;
+    this.skipBoundary = options?.skipBoundary ?? false;
     this.verbatimLatex = options?.verbatimLatex ?? undefined;
     this.args = options?.args ?? undefined;
+    if (options?.body) this.body = options.body;
   }
 
   /**
@@ -351,28 +351,8 @@ export class Atom {
   /**
    * Given an atom or an array of atoms, return a LaTeX string representation
    */
-  static serialize(
-    value: boolean | number | string | Atom | Atom[] | undefined,
-    options: ToLatexOptions
-  ): string {
-    if (isArray<Atom>(value)) return serializeAtoms(value, options);
-
-    if (typeof value === 'number' || typeof value === 'boolean')
-      return value.toString();
-    if (typeof value === 'string') return value;
-
-    if (value === undefined) return '';
-
-    // 1/ Verbatim LaTeX. This allow non-significant punctuation to be
-    // preserved when possible.
-    if (!options.expandMacro && typeof value.verbatimLatex === 'string')
-      return value.verbatimLatex;
-
-    // 2/ Custom serializer
-    const def = getDefinition(value.command, value.mode);
-    if (def?.serialize) return def.serialize(value, options);
-
-    return value.serialize(options);
+  static serialize(value: Atom[] | undefined, options: ToLatexOptions): string {
+    return Mode.serialize(value, options);
   }
 
   /**
@@ -405,12 +385,15 @@ export class Atom {
   }
 
   static fromJson(json: AtomJson): Atom {
-    if (typeof json === 'string') return new Atom('mord', { value: json });
-    return new Atom(json.type, json as any);
+    if (typeof json === 'string')
+      return new Atom({ type: 'mord', value: json });
+    return new Atom(json as any);
   }
 
   toJson(): AtomJson {
-    const result: AtomJson = { type: this.type };
+    const result: AtomJson = {};
+
+    if (this.type) result.type = this.type;
 
     if (this.mode !== 'math') result.mode = this.mode;
     if (this.command && this.command !== this.value)
@@ -482,7 +465,16 @@ export class Atom {
    * Serialize the atom  to LaTeX
    */
   serialize(options: ToLatexOptions): string {
-    // 1/ Command and body
+    // 1/ Verbatim LaTeX. This allow non-significant punctuation to be
+    // preserved when possible.
+    if (!options.expandMacro && typeof this.verbatimLatex === 'string')
+      return this.verbatimLatex;
+
+    // 2/ Custom serializer
+    const def = getDefinition(this.command, this.mode);
+    if (def?.serialize) return def.serialize(this, options);
+
+    // 3/ Command and body
     if (this.body && this.command) {
       return joinLatex([
         latexCommand(this.command, this.bodyToLatex(options)),
@@ -490,7 +482,7 @@ export class Atom {
       ]);
     }
 
-    // 2/ body with no command
+    // 4/ body with no command
     if (this.body) {
       return joinLatex([
         this.bodyToLatex(options),
@@ -498,30 +490,40 @@ export class Atom {
       ]);
     }
 
-    // 3/ A string value (which is a unicode character)
-    if (this.value && this.value !== '\u200B')
-      return this.command ?? unicodeCharToLatex(this.mode, this.value);
+    // 5/ A string value (which is a unicode character)
+    if (!this.value || this.value === '\u200B') return '';
 
-    return '';
+    let c = this.command;
+    if (this.mode === 'text') {
+      c =
+        {
+          '$': '\\$',
+          '{': '\\textbraceleft',
+          '}': '\\textbraceright',
+          '\\': '\\textbackslash',
+        }[c] ?? c;
+    }
+
+    return c ?? unicodeCharToLatex(this.mode, this.value);
   }
 
   bodyToLatex(options: ToLatexOptions): string {
-    return serializeAtoms(this.body, options);
+    return Mode.serialize(this.body, options);
   }
 
   aboveToLatex(options: ToLatexOptions): string {
-    return serializeAtoms(this.above, options);
+    return Mode.serialize(this.above, options);
   }
 
   belowToLatex(options: ToLatexOptions): string {
-    return serializeAtoms(this.below, options);
+    return Mode.serialize(this.below, options);
   }
 
   supsubToLatex(options: ToLatexOptions): string {
     let result = '';
 
     if (this.branch('subscript') !== undefined) {
-      const sub = serializeAtoms(this.subscript, options);
+      const sub = Mode.serialize(this.subscript, options);
       if (sub.length === 0) result += '_{}';
       else if (sub.length === 1) {
         // Using the short form without braces is a stylistic choice
@@ -532,7 +534,7 @@ export class Atom {
     }
 
     if (this.branch('superscript') !== undefined) {
-      const sup = serializeAtoms(this.superscript, options);
+      const sup = Mode.serialize(this.superscript, options);
       if (sup.length === 0) result += '^{}';
       else if (sup.length === 1) {
         if (sup === '\u2032') result += '^\\prime ';
@@ -769,7 +771,7 @@ export class Atom {
   }
 
   makeFirstAtom(branch: Branch): Atom {
-    const result = new Atom('first', { mode: this.mode });
+    const result = new Atom({ type: 'first', mode: this.mode });
     result.parent = this;
     result.parentBranch = branch;
     return result;
@@ -1176,11 +1178,14 @@ export class Atom {
   /**
    * Create a box with the specified body.
    */
-  createBox(context: Context, options?: { classes?: string }): Box {
+  createBox(
+    context: Context,
+    options?: { classes?: string; boxType?: BoxType }
+  ): Box {
     const value = this.value ?? this.body;
 
     // Get the right BoxType for this atom type
-    const type = boxType(this.type);
+    const type = options?.boxType ?? boxType(this.type);
 
     // The font family is determined by:
     // - the base font family associated with this atom (optional). For example,
@@ -1244,14 +1249,14 @@ export class Atom {
 
   /** Return true if a digit, or a decimal point, or a french decimal `{,}` */
   isDigit(): boolean {
-    if (this.type === 'mord' && this.value) return /^[\d,.]$/.test(this.value);
+    if (this.type === 'mord' && this.value) return /^[\d,\.]$/.test(this.value);
     if (this.type === 'group' && this.body?.length === 2)
       return this.body![0].type === 'first' && this.body![1].value === ',';
 
     return false;
   }
   asDigit(): string {
-    if (this.type === 'mord' && this.value && /^[\d,.]$/.test(this.value))
+    if (this.type === 'mord' && this.value && /^[\d,\.]$/.test(this.value))
       return this.value;
 
     if (this.type === 'group' && this.body?.length === 2) {
@@ -1260,38 +1265,6 @@ export class Atom {
     }
     return '';
   }
-}
-
-/**
- *
- * @param atoms the list of atoms to emit as LaTeX
- * @param options.expandMacro true if macros should be expanded
- * @result a LaTeX string
- */
-export function serializeAtoms(
-  atoms: undefined | Atom[],
-  options: ToLatexOptions
-): string {
-  if (!atoms || atoms.length === 0) return '';
-
-  if (atoms[0].type === 'first') {
-    if (atoms.length === 1) return '';
-    // Remove the 'first' atom, if present
-    atoms = atoms.slice(1);
-  }
-
-  if (atoms.length === 0) return '';
-
-  const tokens: string[] = [];
-
-  for (const cssClassRun of getPropertyRuns(atoms, 'cssClass')) {
-    for (const colorRun of getPropertyRuns(cssClassRun, 'color')) {
-      for (const modeRun of getModeRuns(colorRun))
-        tokens.push(...Mode.serialize(modeRun, options));
-    }
-  }
-
-  return joinLatex(tokens);
 }
 
 function getStyleRuns(atoms: Atom[]): Atom[][] {
@@ -1407,9 +1380,9 @@ function renderStyleRun(
   let result: Box;
   if (options || context.isTight || boxes.length > 1) {
     result = new Box(boxes, {
-      type: 'lift',
       isTight: context.isTight,
       ...(options ?? {}),
+      type: 'lift',
     });
     result.isSelected = boxes.every((x) => x.isSelected);
   } else result = boxes[0];

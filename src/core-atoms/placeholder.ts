@@ -8,7 +8,8 @@ import { latexCommand } from '../core/tokenizer';
 export class PlaceholderAtom extends Atom {
   constructor(options?: { mode?: ParseMode; style?: Style }) {
     // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
-    super('placeholder', {
+    super({
+      type: 'placeholder',
       command: '\\placeholder',
       mode: options?.mode ?? 'math',
       style: options?.style,
@@ -37,6 +38,6 @@ export class PlaceholderAtom extends Atom {
   }
 
   serialize(): string {
-    return latexCommand('\\placeholder', this.value);
+    return '\\placeholder{}';
   }
 }

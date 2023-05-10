@@ -8,6 +8,7 @@ import { Context } from '../core/context';
 
 import { makeCustomSizedDelim } from '../core/delimiters';
 import { latexCommand } from '../core/tokenizer';
+import { getDefinition } from '../core-definitions/definitions-utils';
 
 export class SurdAtom extends Atom {
   constructor(
@@ -19,7 +20,8 @@ export class SurdAtom extends Atom {
       style: Style;
     }
   ) {
-    super('surd', {
+    super({
+      type: 'surd',
       command,
       mode: options.mode ?? 'math',
       style: options.style,
@@ -36,11 +38,12 @@ export class SurdAtom extends Atom {
     });
   }
 
-  toJson(): AtomJson {
-    return super.toJson();
-  }
-
   serialize(options: ToLatexOptions): string {
+    if (!options.expandMacro && typeof this.verbatimLatex === 'string')
+      return this.verbatimLatex;
+    const def = getDefinition(this.command, this.mode);
+    if (def?.serialize) return def.serialize(this, options);
+
     const command = this.command;
     const body = this.bodyToLatex(options);
     if (this.above && !this.hasEmptyBranch('above'))
@@ -170,7 +173,7 @@ export class SurdAtom extends Atom {
         this.style
       ),
       this.above,
-      { style: this.style, type: 'skip' }
+      { style: this.style, type: 'ignore' }
     );
 
     if (!indexBox) {
@@ -203,7 +206,7 @@ export class SurdAtom extends Atom {
     // kerning
     const result = new Box(
       [
-        new Box(indexStack, { classes: 'ML__sqrt-index', type: 'skip' }),
+        new Box(indexStack, { classes: 'ML__sqrt-index', type: 'ignore' }),
         delimBox,
         bodyBox,
       ],

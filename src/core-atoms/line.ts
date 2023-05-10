@@ -12,7 +12,7 @@ export class LineAtom extends Atom {
     body: Atom[],
     options: { position: 'overline' | 'underline'; style: Style }
   ) {
-    super('line', { command, style: options.style });
+    super({ type: 'line', command, style: options.style });
     this.skipBoundary = true;
     this.body = body;
     this.position = options.position;
@@ -56,6 +56,6 @@ export class LineAtom extends Atom {
     }
 
     if (this.caret) stack.caret = this.caret;
-    return new Box(stack, { classes: this.position, type: 'skip' });
+    return new Box(stack, { classes: this.position, type: 'ignore' });
   }
 }

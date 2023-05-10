@@ -1,6 +1,10 @@
 import type { BoxedExpression } from '@cortex-js/compute-engine';
 
-import type { Keybinding, KeyboardLayoutName } from '../public/options';
+import type {
+  ContentChangeOptions,
+  Keybinding,
+  KeyboardLayoutName,
+} from '../public/options';
 import type {
   Mathfield,
   InsertOptions,
@@ -221,13 +225,6 @@ export class MathfieldPrivate implements Mathfield, KeyboardDelegateInterface {
     this.element = element;
     element.mathfield = this;
 
-    // // Inject the core and mathfield stylesheets
-    // const styleNode = document.createElement('style');
-    // styleNode.append(
-    //   document.createTextNode(CORE_STYLESHEET + MATHFIELD_STYLESHEET)
-    // );
-    // element.getRootNode().appendChild(styleNode);
-
     // Focus/blur state
     this.blurred = true;
 
@@ -258,19 +255,23 @@ export class MathfieldPrivate implements Mathfield, KeyboardDelegateInterface {
     let elementText = options.value ?? this.element.textContent ?? '';
     elementText = elementText.trim();
 
+    // The input mode (text, math, latex).
+    // It indicates the mode the next character typed will be interpreted in,
+    // which may be different from the mode of the current selection.
+    const mode = effectiveMode(this.options);
+
     // Setup the model
-    this.model = new ModelPrivate(this, elementText, {
-      onSelectionDidChange: () => this._onSelectionDidChange(),
+    const root = new Atom({
+      type: 'root',
+      mode,
+      body: parseLatex(elementText, { context: this.context }),
     });
 
-    // The input mode (text, math, command)
-    // While model.getMode() represent the mode of the current selection,
-    // this.mode is the mode chosen by the user. It indicates the mode the
-    // next character typed will be interpreted in.
-    // It is often identical to getAnchorMode() since changing the selection
-    // changes the mode, but sometimes it is not, for example when a user
-    // enters a mode changing command.
-    this.model.mode = effectiveMode(this.options);
+    this.model = new ModelPrivate(this, mode, root, {
+      onSelectionDidChange: () => this.onSelectionDidChange(),
+      onContentWillChange: (options) => this.onContentWillChange(options),
+    });
+
     this.smartModeSuppressed = false;
 
     // Prepare to manage undo/redo
@@ -592,11 +593,6 @@ If you are using Vue, this may be because you are using the runtime-only build o
   setOptions(config: Partial<MathfieldOptionsPrivate>): void {
     this.options = { ...this.options, ...updateOptions(config) };
 
-    this.model.setListeners({
-      onSelectionDidChange: (_sender: ModelPrivate) =>
-        this._onSelectionDidChange(),
-    });
-
     this._keybindings = undefined;
 
     if (this.options.defaultMode === 'inline-math')
@@ -610,7 +606,7 @@ If you are using Vue, this may be because you are using the runtime-only build o
 
     // Changing some config options (i.e. `macros`) may
     // require the content to be reparsed and re-rendered
-    const content = Atom.serialize(this.model.root, {
+    const content = this.model.root.serialize({
       expandMacro: false,
       defaultMode: this.options.defaultMode,
     });
@@ -624,7 +620,18 @@ If you are using Vue, this may be because you are using the runtime-only build o
       });
     }
 
-    requestUpdate(this);
+    if (
+      'value' in config ||
+      'macros' in config ||
+      'registers' in config ||
+      'colorMap' in config ||
+      'backgroundColorMap' in config ||
+      'letterShapeStyle' in config ||
+      'minFontScale' in config ||
+      'readOnly' in config ||
+      'placeholderSymbol' in config
+    )
+      requestUpdate(this);
   }
 
   getOptions<K extends keyof MathfieldOptionsPrivate>(
@@ -969,10 +976,12 @@ If you are using Vue, this may be because you are using the runtime-only build o
     } else if (s === '&') addColumnAfter(this.model);
     else {
       const savedStyle = this.style;
-      ModeEditor.insert(this.model, s, {
-        style: this.model.at(this.model.position).computedStyle,
-        ...options,
-      });
+      if (this.model.selectionIsCollapsed) {
+        ModeEditor.insert(this.model, s, {
+          style: this.model.at(this.model.position).computedStyle,
+          ...options,
+        });
+      } else ModeEditor.insert(this.model, s, options);
       if (options.resetStyle) this.style = savedStyle;
     }
 
@@ -1360,13 +1369,13 @@ If you are using Vue, this may be because you are using the runtime-only build o
     this.undoManager?.reset();
   }
 
-  private _onSelectionDidChange(): void {
+  private onSelectionDidChange(): void {
     const model = this.model;
 
     // Keep the content of the keyboard sink in sync with the selection.
     // Safari will not dispatch cut/copy/paste unless there is a DOM selection.
     this.keyboardDelegate.setValue(
-      this.model.getValue(this.model.selection, 'latex-expanded')
+      model.getValue(this.model.selection, 'latex-expanded')
     );
 
     // Adjust mode
@@ -1389,7 +1398,25 @@ If you are using Vue, this may be because you are using the runtime-only build o
       })
     );
 
+    if (window.mathVirtualKeyboard.visible)
+      window.mathVirtualKeyboard.update(makeProxy(this));
+
     updateEnvironmemtPopover(this);
+  }
+
+  private onContentWillChange(options: ContentChangeOptions): boolean {
+    return (
+      this.host?.dispatchEvent(
+        new InputEvent('beforeinput', {
+          ...options,
+          // To work around a bug in WebKit/Safari (the inputType property gets stripped), include the inputType as the 'data' property. (see #1843)
+          data: options.data ? options.data : options.inputType ?? '',
+          cancelable: true,
+          bubbles: true,
+          composed: true,
+        })
+      ) ?? true
+    );
   }
 
   onFocus(): void {

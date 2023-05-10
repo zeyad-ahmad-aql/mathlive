@@ -1,9 +1,4 @@
-import {
-  Atom,
-  BBoxParameter,
-  ToLatexOptions,
-  serializeAtoms,
-} from '../core/atom-class';
+import { Atom, BBoxParameter, ToLatexOptions } from '../core/atom-class';
 
 import { GroupAtom } from '../core-atoms/group';
 import { BoxAtom } from '../core-atoms/box';
@@ -31,10 +26,10 @@ import type {
   FontFamily,
 } from '../public/core-types';
 import type { PrivateStyle } from '../core/types';
-import { latexCommand } from '../core/tokenizer';
+import { joinLatex, latexCommand } from '../core/tokenizer';
 import { atomsBoxType } from '../core/box';
 import { serializeLatexValue } from '../core/registers-utils';
-import type { Context } from '../core/context';
+import { Context } from '../core/context';
 
 defineFunction('mathtip', '{:math}{:math}', {
   createAtom: (name, args: (null | Argument)[], style): Atom =>
@@ -56,24 +51,21 @@ defineFunction('texttip', '{:math}{:text}', {
 
 defineFunction('error', '{:math}', {
   createAtom: (_name, args: (null | Argument)[], style): Atom =>
-    new GroupAtom(argAtoms(args[0]), {
-      mode: 'math',
-      command: '\\error',
-      renderClass: 'ML__error',
-      style,
-    }),
+    new Atom({ args, body: argAtoms(args[0]), style }),
+  serialize: (atom, options) => `\\error{${atom.bodyToLatex(options)}}`,
+  render: (atom, context) => atom.createBox(context, { classes: 'ML__error' }),
 });
 
 defineFunction('ensuremath', '{:math}', {
-  // applyMode: 'math',
-  createAtom: (_name, args: [null | Argument], style) =>
-    new GroupAtom(argAtoms(args[0]), {
+  createAtom: (command, args: [null | Argument], style) =>
+    new Atom({
+      type: 'minner',
+      command,
+      body: argAtoms(args[0]),
       mode: 'math',
-      latexOpen: '\\ensuremath{',
-      latexClose: '}',
       style,
-      // mathstyleName: 'textstyle',
     }),
+  serialize: (atom, options) => `${atom.command}{${atom.bodyToLatex(options)}}`,
 });
 
 defineFunction('color', '{:value}', {
@@ -108,10 +100,9 @@ defineFunction('boxed', '{content:math}', {
     }),
 });
 
-// Technically, using a BoxAtom is more correct (there is a small margin around it)
-// However, just changing the background color makes editing easier
-defineFunction('colorbox', '{:value}{content:auto*}', {
-  applyMode: 'text',
+// Technically, using a BoxAtom is more correct (there is a small margin
+// around it). However, just changing the background color makes editing easier
+defineFunction('colorbox', '{:value}{:text*}', {
   applyStyle: (_name, args: [LatexValue | null], context) => {
     return {
       verbatimBackgroundColor: serializeLatexValue(args[0]) ?? undefined,
@@ -124,7 +115,7 @@ defineFunction('colorbox', '{:value}{content:auto*}', {
 
 defineFunction(
   'fcolorbox',
-  '{frame-color:value}{background-color:value}{content:auto}',
+  '{frame-color:value}{background-color:value}{content:text}',
   {
     applyMode: 'text',
     createAtom: (
@@ -202,14 +193,24 @@ defineFunction(
   ['displaystyle', 'textstyle', 'scriptstyle', 'scriptscriptstyle'],
   '{:rest}',
   {
-    createAtom: (name, args: (null | Argument)[], style): Atom =>
-      new GroupAtom(argAtoms(args[0]), {
-        latexOpen: `{${name} `,
-        latexClose: '}',
-        style,
-        mathstyleName: name.slice(1) as MathstyleName,
-        boxType: 'lift',
-      }),
+    createAtom: (command, args: (null | Argument)[], style): Atom =>
+      new Atom({ command, body: argAtoms(args[0]), style }),
+    render: (atom, context) => {
+      const ctx = new Context(
+        { parent: context, mathstyle: atom.command.slice(1) as MathstyleName },
+        atom.style
+      );
+      const box = Atom.createBox(ctx, atom.body, {
+        type: 'lift',
+        mode: 'math',
+        style: atom.style,
+      })!;
+
+      if (atom.caret) box.caret = atom.caret;
+      return atom.bind(context, box);
+    },
+    serialize: (atom, options) =>
+      `{${joinLatex([atom.command, atom.bodyToLatex(options)])}}`,
   }
 );
 
@@ -291,7 +292,7 @@ defineFunction('selectfont', '', {
 
 // \bf works in any mode
 // As per the LaTeX 2.09 semantics, it overrides shape, family
-defineFunction('bf', '', {
+defineFunction('bf', '{:rest}', {
   applyStyle: () => ({ fontSeries: 'b', fontShape: 'n', fontFamily: 'roman' }),
 });
 
@@ -299,15 +300,13 @@ defineFunction('bf', '', {
 // In LaTeX, \bm{x\mathrm{y}} yield a bold x and an upright y.
 // This is not necesarily intentional, but a side effect of the (current)
 // implementation of \bm
-defineFunction(['boldsymbol', 'bm'], '{:math*}', {
+defineFunction(['boldsymbol', 'bm'], '{:math}', {
   applyMode: 'math',
-  createAtom: (name, args: (null | Argument)[], style): Atom =>
-    new GroupAtom(argAtoms(args[0]), {
-      latexOpen: `${name}{`,
-      latexClose: '}',
-      style,
-      renderClass: 'ML__boldsymbol',
-    }),
+  createAtom: (command, args: (null | Argument)[], style): Atom =>
+    new Atom({ command, body: argAtoms(args[0]), style }),
+  serialize: (atom, options) => `${atom.command}{${atom.bodyToLatex(options)}}`,
+  render: (atom: Atom, context: Context) =>
+    atom.createBox(context, { classes: 'ML__boldsymbol' }),
 });
 
 // Note: switches to math mode
@@ -316,24 +315,24 @@ defineFunction('bold', '{:math*}', {
   applyStyle: () => ({ variantStyle: 'bold' }),
 });
 
-defineFunction('bfseries', '', {
+defineFunction('bfseries', '{:rest}', {
   applyMode: 'text',
   applyStyle: () => ({ fontSeries: 'b' }),
 });
-defineFunction('mdseries', '', {
+defineFunction('mdseries', '{:rest}', {
   applyMode: 'text',
   applyStyle: () => ({ fontSeries: 'm' }),
 });
-defineFunction('upshape', '', {
+defineFunction('upshape', '{:rest}', {
   applyMode: 'text',
   applyStyle: () => ({ fontShape: 'n' }),
 });
-defineFunction('slshape', '', {
+defineFunction('slshape', '{:rest}', {
   applyMode: 'text',
   applyStyle: () => ({ fontShape: 'sl' }),
 });
 // Small caps
-defineFunction('scshape', '', {
+defineFunction('scshape', '{:rest}', {
   applyMode: 'text',
   applyStyle: () => ({ fontShape: 'sc' }),
 });
@@ -426,7 +425,7 @@ defineFunction('mathtt', '{:math*}', {
   applyStyle: () => ({ variant: 'monospace', variantStyle: 'up' }),
 });
 
-defineFunction('it', '', {
+defineFunction('it', '{:rest}', {
   applyStyle: () => ({
     fontSeries: 'm',
     fontShape: 'it',
@@ -475,18 +474,17 @@ defineFunction('mathscr', '{:math*}', {
 defineFunction('mbox', '{:text}', {
   ifMode: 'math',
   createAtom: (command, args: (null | Argument)[], style): Atom =>
-    new GroupAtom(argAtoms(args[0]), {
-      style,
-      mode: 'text',
+    new Atom({
+      type: 'mord',
       command,
+      style,
+      body: argAtoms(args[0]),
+      mode: 'math',
     }),
   serialize: (atom: GroupAtom, options: ToLatexOptions) =>
     latexCommand(
       '\\mbox',
-      atom.bodyToLatex({
-        ...options,
-        skipModeCommand: true,
-      })
+      atom.bodyToLatex({ ...options, defaultMode: 'text' })
     ),
 });
 
@@ -495,40 +493,92 @@ defineFunction('text', '{:text}', {
   applyMode: 'text',
 });
 
-/* A MathJax extension: assign a class to the element */
-defineFunction('class', '{name:string}{content:auto*}', {
-  createAtom: (_name, args: [null | string, null | Argument], style): Atom =>
-    new GroupAtom(argAtoms(args[1]), {
-      customClass: args[0] ?? '',
+/* Assign a class to the element.`class` is a MathJax extension, `htmlClass`
+   is a KaTeX extension. */
+defineFunction(['class', 'htmlClass'], '{name:string}{content:auto}', {
+  createAtom: (command, args: [null | string, null | Argument], style): Atom =>
+    new Atom({
+      command,
+      args,
+      body: argAtoms(args[1]),
       style,
     }),
+  serialize: (atom, options) => {
+    if (!atom.args?.[0]) return atom.bodyToLatex(options);
+    return `${atom.command}{${atom.args![0] as string}}{${atom.bodyToLatex(
+      options
+    )}}`;
+  },
+  render: (atom, context) =>
+    atom.createBox(context, { classes: (atom.args![0] as string) ?? '' }),
 });
 
-/* A MathJax extension: assign an ID to the element */
-defineFunction('cssId', '{id:string}{content:auto}', {
-  createAtom: (_name, args: [null | string, null | Argument], style): Atom =>
-    new GroupAtom(argAtoms(args[1]), {
-      cssId: args[0] ?? '',
+/* Assign an ID to the element. `cssId` is a MathJax extension,
+   `htmlId` is a KaTeX extension. */
+defineFunction(['cssId', 'htmlId'], '{id:string}{content:auto}', {
+  createAtom: (command, args: [null | string, null | Argument], style): Atom =>
+    new Atom({
+      command,
+      args,
+      body: argAtoms(args[1]),
       style,
     }),
+  serialize: (atom, options) => {
+    if (!atom.args?.[0]) return atom.bodyToLatex(options);
+    return `${atom.command}{${atom.args![0] as string}}{${atom.bodyToLatex(
+      options
+    )}}`;
+  },
+  render: (atom, context) => {
+    const box = atom.createBox(context);
+    box.cssId = (atom.args![0] as string) ?? '';
+    return box;
+  },
 });
 
-/*  assign an property to the element */
+/* Assign an attribute to the element (MathJAX extension) */
 defineFunction('htmlData', '{data:string}{content:auto}', {
-  createAtom: (_name, args: [null | string, null | Argument], style): Atom =>
-    new GroupAtom(argAtoms(args[1]), {
-      htmlData: args[0] ?? '',
+  createAtom: (command, args: [null | string, null | Argument], style): Atom =>
+    new Atom({
+      command,
+      body: argAtoms(args[1]),
+      args,
       style,
     }),
+  serialize: (atom, options) => {
+    if (!atom.args?.[0]) return atom.bodyToLatex(options);
+    return `\\htmlData{${atom.args![0] as string}}{${atom.bodyToLatex(
+      options
+    )}}`;
+  },
+  render: (atom, context) => {
+    const box = atom.createBox(context);
+    box.htmlData = (atom.args![0] as string) ?? '';
+    return box;
+  },
 });
 
-/* assign CSS styles to the element */
-defineFunction('htmlStyle', '{data:string}{content:auto}', {
-  createAtom: (_name, args: [null | string, null | Argument], style): Atom =>
-    new GroupAtom(argAtoms(args[1]), {
-      htmlStyle: args[0] ?? '',
+/* Assign CSS styles to the element. `style` is a MathJax extension,
+  `htmlStyle` is the KaTeX extension. */
+defineFunction(['style', 'htmlStyle'], '{data:string}{content:auto}', {
+  createAtom: (command, args: [null | string, null | Argument], style): Atom =>
+    new Atom({
+      command,
+      args,
+      body: argAtoms(args[1]),
       style,
     }),
+  serialize: (atom, options) => {
+    if (!atom.args?.[0]) return atom.bodyToLatex(options);
+    return `${atom.command}{${atom.args![0] as string}}{${atom.bodyToLatex(
+      options
+    )}}`;
+  },
+  render: (atom, context) => {
+    const box = atom.createBox(context);
+    box.htmlStyle = (atom.args![0] as string) ?? '';
+    return box;
+  },
 });
 
 /* Note: in TeX, \em is restricted to text mode. We extend it to math
@@ -536,25 +586,21 @@ defineFunction('htmlStyle', '{data:string}{content:auto}', {
  * `\emph{important text}`
  * `{\em important text}`
  */
-defineFunction('em', '{:auto*}', {
-  createAtom: (_name: string, args: (null | Argument)[], style): Atom =>
-    new GroupAtom(argAtoms(args[0]), {
-      latexOpen: '\\em',
-      latexClose: '',
-      renderClass: 'ML__emph',
-      style,
-    }),
+defineFunction('em', '{:rest}', {
+  createAtom: (command: string, args: (null | Argument)[], style): Atom =>
+    new Atom({ command, body: argAtoms(args[0]), args, style }),
+  serialize: (atom, options) => `{\\em ${atom.bodyToLatex(options)}}`,
+  render: (atom, context) =>
+    atom.createBox(context, { classes: 'ML__emph', boxType: 'lift' }),
 });
 
 /* Note: in TeX, \emph is restricted to text mode. We extend it to math */
 defineFunction('emph', '{:auto}', {
-  createAtom: (_name, args: (null | Argument)[], style): Atom =>
-    new GroupAtom(argAtoms(args[0]), {
-      latexOpen: '\\emph{',
-      latexClose: '}',
-      renderClass: 'ML__emph',
-      style,
-    }),
+  createAtom: (command, args: (null | Argument)[], style): Atom =>
+    new Atom({ command, body: argAtoms(args[0]), args, style }),
+  serialize: (atom, options) => `\\emph{${atom.bodyToLatex(options)}}`,
+  render: (atom, context) =>
+    atom.createBox(context, { classes: 'ML__emph', boxType: 'lift' }),
 });
 
 // Extra data needed for the delimiter parse function down below
@@ -693,8 +739,6 @@ defineFunction(['mkern', 'kern', 'mskip', 'hskip', 'mspace'], '{width:value}', {
 defineFunction('mathop', '{:auto}', {
   createAtom: (name, args: (null | Argument)[], style): Atom =>
     new OperatorAtom(name, argAtoms(args[0]), {
-      type: 'mop',
-      captureSelection: true,
       limits: 'over-under',
       isFunction: true,
       hasArgument: true,
@@ -732,7 +776,6 @@ defineFunction(
             '\\mathinner': 'minner',
           } as const
         )[name],
-        captureSelection: true,
         hasArgument: true,
         style,
       }),
@@ -790,25 +833,21 @@ defineFunction(['operatorname', 'operatorname*'], '{operator:math}', {
   },
 });
 
-class UnicodeAtom extends Atom {
-  codepoint: LatexValue;
-  constructor(codepoint: LatexValue, style: PrivateStyle) {
-    super('mord', { style });
-    this.codepoint = codepoint;
-  }
-  createBox(context: Context, options?: { classes?: string }) {
-    const value = context.toNumber(this.codepoint) ?? 0x2753; // BLACK QUESTION MARK;
-    this.value = String.fromCodePoint(value);
-    return super.createBox(context, options);
-  }
-  serialize(): string {
-    return '\\unicode' + serializeLatexValue(this.codepoint);
-  }
-}
-
+/** This is a MathJax extension */
 defineFunction('unicode', '{charcode:value}', {
-  createAtom: (_name, args: (null | LatexValue)[], style) =>
-    new UnicodeAtom(args[0] ?? { number: 0xfffd, base: 'hexadecimal' }, style),
+  createAtom: (command, args: (null | LatexValue)[], style) =>
+    new Atom({ command, args, style }),
+  serialize: (atom) =>
+    `\\unicode${serializeLatexValue(
+      (atom.args![0] as LatexValue) ?? { number: 0x2753, base: 'hexadecimal' }
+    )}`,
+  render: (atom, context) => {
+    let value = context.evaluate(atom.args![0] as LatexValue);
+    if (!value || !('number' in value))
+      value = { number: 0x2753, base: 'hexadecimal' }; // BLACK QUESTION MARK;
+    atom.value = String.fromCodePoint(value.number);
+    return atom.createBox(context);
+  },
 });
 
 // A box of the width and height
@@ -926,18 +965,18 @@ defineFunction('smash', '[:string]{:auto}', {
     }),
 });
 
-defineFunction(['vphantom'], '{:auto*}', {
+defineFunction(['vphantom'], '{:auto}', {
   createAtom: (name, args: (null | Argument)[], style): Atom =>
-    new PhantomAtom(name, argAtoms(args[1]), {
+    new PhantomAtom(name, argAtoms(args[0]), {
       isInvisible: true,
       smashWidth: true,
       style,
     }),
 });
 
-defineFunction(['hphantom'], '{:auto*}', {
+defineFunction(['hphantom'], '{:auto}', {
   createAtom: (name, args: (null | Argument)[], style): Atom =>
-    new PhantomAtom(name, argAtoms(args[1]), {
+    new PhantomAtom(name, argAtoms(args[0]), {
       isInvisible: true,
       smashHeight: true,
       smashDepth: true,
@@ -945,71 +984,76 @@ defineFunction(['hphantom'], '{:auto*}', {
     }),
 });
 
-defineFunction(['phantom'], '{:auto*}', {
+defineFunction(['phantom'], '{:auto}', {
   createAtom: (name, args: (null | Argument)[], style): Atom =>
-    new PhantomAtom(name, argAtoms(args[1]), {
+    new PhantomAtom(name, argAtoms(args[0]), {
       isInvisible: true,
       style,
     }),
 });
 
 defineFunction('not', '{:math}', {
-  createAtom: (name, args: (null | Argument)[], style): Atom => {
+  createAtom: (command, args: (null | Argument)[], style): Atom => {
     const arg = argAtoms(args[0]);
     if (args.length < 1 || args[0] === null || arg.length === 0) {
-      return new Atom('mrel', {
-        command: name,
+      return new Atom({
+        type: 'mrel',
+        command,
         args,
         style,
         value: '\ue020',
       });
     }
-    const isGroup = typeof args[0] === 'object' && 'group' in args[0];
-    const boxType = isGroup ? 'ord' : atomsBoxType(arg);
 
-    const result = new GroupAtom(
-      [
-        new OverlapAtom('', '\ue020', { align: 'right', style, boxType }),
-        ...arg,
-      ],
-      {
-        command: '\\not',
-        args,
-        boxType,
-        captureSelection: true,
-      }
-    );
+    const result = new Atom({
+      command,
+      body: [new OverlapAtom('', '\ue020', { align: 'right', style }), ...arg],
+      args,
+      style,
+      captureSelection: true,
+    });
     return result;
   },
   serialize: (atom: Atom | GroupAtom, options) => {
     const arg = atom.args![0]!;
-    const isGroup = typeof arg === 'object' && 'group' in arg;
-    if (atom instanceof GroupAtom) {
+    const isGroup = arg && typeof arg === 'object' && 'group' in arg;
+    if (atom.value !== '\ue020') {
       return isGroup
-        ? `\\not{${serializeAtoms(arg.group, options)}}`
-        : `\\not${serializeAtoms(arg as Atom[], options)}`;
+        ? `\\not{${Atom.serialize(arg.group, options)}}`
+        : `\\not${Atom.serialize(arg as Atom[], options)}`;
     }
     return isGroup ? `\\not{}` : `\\not`;
+  },
+  render: (atom, context) => {
+    if (atom.value) return atom.createBox(context);
+
+    const isGroup =
+      atom.args![0] &&
+      typeof atom.args![0] === 'object' &&
+      'group' in atom.args![0]!;
+    const type = isGroup ? 'ord' : atomsBoxType(argAtoms(atom.args![0]));
+    const box = Atom.createBox(context, atom.body, { type })!;
+    if (atom.caret) box.caret = atom.caret;
+    return atom.bind(context, box);
   },
 });
 
 defineFunction(['ne', 'neq'], '', {
-  createAtom: (name, args, style): Atom =>
-    new GroupAtom(
-      [
+  createAtom: (command, _args, style): Atom =>
+    new Atom({
+      type: 'mrel',
+      body: [
         new OverlapAtom('', '\ue020', {
           align: 'right',
           style,
           boxType: 'rel',
         }),
-        new Atom('mrel', { style, value: '=' }),
+        new Atom({ style, value: '=' }),
       ],
-      {
-        boxType: 'rel',
-        captureSelection: true,
-        command: name,
-      }
-    ),
+      captureSelection: true,
+      command,
+      style,
+    }),
   serialize: (atom) => atom.command,
 });
 

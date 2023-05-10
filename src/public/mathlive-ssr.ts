@@ -90,11 +90,13 @@ export function convertLatexToMarkup(
   //
   // 1. Parse the formula and return a tree of atoms, e.g. 'genfrac'.
   //
-  const root = new Atom('root');
-  root.body = parseLatex(text, {
-    context,
-    parseMode: 'math',
-    mathstyle: options.mathstyle,
+  const root = new Atom({
+    type: 'root',
+    body: parseLatex(text, {
+      context,
+      parseMode: 'math',
+      mathstyle: options.mathstyle,
+    }),
   });
 
   //
@@ -203,9 +205,9 @@ export function convertLatexToAsciiMath(
   latex: string,
   parseMode: ParseMode = 'math'
 ): string {
-  const root = new Atom('root');
-  root.body = parseLatex(latex, { parseMode });
-  return atomToAsciiMath(root);
+  return atomToAsciiMath(
+    new Atom({ type: 'root', body: parseLatex(latex, { parseMode }) })
+  );
 }
 
 export function convertAsciiMathToLatex(ascii: string): string {

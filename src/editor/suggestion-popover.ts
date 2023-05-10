@@ -24,10 +24,9 @@ import { applyInterBoxSpacing } from '../core/inter-box-spacing';
 import { getSharedElement, releaseSharedElement } from './shared-element';
 
 function latexToMarkup(mf: MathfieldPrivate, latex: string): string {
-  const root = new Atom('root');
   const context = new Context({ from: mf.context });
 
-  root.body = parseLatex(latex, { context });
+  const root = new Atom({ type: 'root', body: parseLatex(latex, { context }) });
 
   const box = coalesce(
     applyInterBoxSpacing(
@@ -206,6 +205,7 @@ export function createSuggestionPopover(
 }
 
 export function disposeSuggestionPopover(): void {
+  if (!document.getElementById('mathlive-suggestion-popover')) return;
   releaseSharedElement('mathlive-suggestion-popover');
   releaseStylesheet('mathlive-suggestion-popover-stylesheet');
   releaseStylesheet('mathlive-core-stylesheet');
