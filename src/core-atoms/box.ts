@@ -1,8 +1,14 @@
 import type { LatexValue } from '../public/core-types';
 
-import { Atom, AtomJson, CreateAtomOptions } from '../core/atom-class';
+import {
+  Atom,
+  AtomJson,
+  CreateAtomOptions,
+  ToLatexOptions,
+} from '../core/atom-class';
 import { Box } from '../core/box';
 import { Context } from '../core/context';
+import { joinLatex } from 'core/tokenizer';
 
 export class BoxAtom extends Atom {
   readonly framecolor?: LatexValue;
@@ -53,7 +59,7 @@ export class BoxAtom extends Atom {
 
   render(parentContext: Context): Box | null {
     // Base is the main content "inside" the box
-    const base = Atom.createBox(parentContext, this.body, { type: 'ord' });
+    const base = Atom.createBox(parentContext, this.body, { type: 'lift' });
     if (!base) return null;
 
     const offset = parentContext.toEm(this.offset ?? { dimension: 0 });
@@ -112,7 +118,7 @@ export class BoxAtom extends Atom {
     base.setStyle('vertical-align', -base.height, 'em');
 
     // The result is a box that encloses the box and the base
-    const result = new Box([box, base]);
+    const result = new Box([box, base], { type: 'lift' });
     // Set its position as relative so that the box can be absolute positioned
     // over the base
     result.setStyle('display', 'inline-block');
@@ -140,6 +146,12 @@ export class BoxAtom extends Atom {
     if (this.caret) result.caret = this.caret;
 
     return this.attachSupsub(parentContext, { base: result });
+  }
+
+  _serialize(options: ToLatexOptions): string {
+    if (!options.skipStyles) return super._serialize(options);
+
+    return joinLatex([this.bodyToLatex(options), this.supsubToLatex(options)]);
   }
 }
 

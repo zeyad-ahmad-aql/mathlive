@@ -11,6 +11,9 @@
     <link rel="icon" href="data:," />
     <style>
       math-field {
+        /* --caret-color: cyan; */
+        /* --selection-background-color: red;
+        --selection-color: beige; */
         border: 1px solid var(--editable-border);
         padding: 5px;
         margin: 10px 0 10px 0;
@@ -26,7 +29,7 @@
       } */
     </style>
   </head>
-  <body theme="light">
+  <body>
     <header>
       <h1>Smoke Test</h1>
       <ul>
@@ -43,7 +46,11 @@
       </ul>
     </header>
     <main>
-      <math-field id="mf">\cos^2(x)+\textcolor{red}{\sin^{-1}(x)}</math-field>
+      <math-field id="mf">\textcolor{red}{a}\boxed{+b}+\mathbb{R}+R</math-field>
+
+      <!-- <math-field id="mf"
+        >\colorbox{yellow}{$\cos^2(x)+\textcolor{red}{\sin^{-1}(x)}$}</math-field
+      > -->
 
       <h2>Selection</h2>
       <div class="output" id="selection"></div>
@@ -95,7 +102,7 @@
 
       // iframe.contentDocument.body.appendChild(mf.cloneNode(true));
 
-      mathVirtualKeyboard.layouts = makeVirtualKeyboard(['x', 'y']);
+      // mathVirtualKeyboard.layouts = makeVirtualKeyboard(['x', 'y']);
 
       const ce = new ComputeEngine({
         latexDictionary: [
@@ -123,6 +130,7 @@
 
       const mf = document.getElementById('mf');
 
+      mf.smartFence = false;
       mf.onInlineShortcut = (_mf, s) => {
         if (/^[a-zA-Z][a-zA-Z0-9]*'?(_[a-zA-Z0-9]+'?)?$/.test(s)) {
           const m = s.match(/^([a-zA-Z]+)([0-9]+)$/);
@@ -135,16 +143,16 @@
         }
         return '';
       };
-      mf.macros = {
-        ...mf.macros,
-        // Alpha: undefined,
-        minutes: '\\prime',
-        smolfrac: {
-          args: 2,
-          def: '{}^{#1}\\!\\!/\\!{}_{#2}',
-          captureSelection: true,
-        },
-      };
+      // mf.macros = {
+      //   ...mf.macros,
+      //   // Alpha: undefined,
+      //   minutes: '\\prime',
+      //   smolfrac: {
+      //     args: 2,
+      //     def: '{}^{#1}\\!\\!/\\!{}_{#2}',
+      //     captureSelection: true,
+      //   },
+      // };
 
       mf.addEventListener('input', (ev) => {
         console.log('input event');
