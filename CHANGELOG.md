@@ -1,4 +1,29 @@
-## [Unreleased]
+## 0.94.3 (2023-05-22)
+
+## Improvements
+
+- The `mathVirtualKeyboard.layouts` property was a frozen array (an array 
+  that cannot be modified) but that wasn't clear. Now, a runtime error is 
+  produced if an attempt is made to modify the array. If using Typescript, 
+  a compile-time error is also generated.
+  
+## Bug Fixes
+
+- **#1979** Vectors were displayed with an offset
+- **#1978** Pasting or inserting some content could result in a runtime error
+- **#1978** Text content was not properly serialized in a `\text{}` command
+- **#1682** Vectors (and other accents) are now spoken correctly
+
+## 0.94.2 (2023-05-22)
+
+## Bug Fixes
+
+- **#1976** Toggling the virtual keyboard several times would eventually not
+  display the virtual keyboard.
+- Only apply smartFence in math mode (not in text or LaTeX mode).
+- **#1975** When inserting a square root, do not insert an index by default
+
+## 0.94.1 (2023-05-21)
 
 ## Improvements
 
