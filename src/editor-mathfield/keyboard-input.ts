@@ -29,7 +29,6 @@ import type { MathfieldPrivate } from './mathfield-private';
 import { removeIsolatedSpace, smartMode } from './smartmode';
 import { showKeystroke } from './keystroke-caption';
 import { ModeEditor } from './mode-editor';
-import { VirtualKeyboard } from 'virtual-keyboard/virtual-keyboard';
 import type { ParseMode, Style } from 'public/core-types';
 import type { ModelPrivate } from 'editor-model/model-private';
 import { LeftRightAtom } from 'core-atoms/leftright';
@@ -536,8 +535,8 @@ export function onInput(
   let graphemes = splitGraphemes(text);
 
   // Check if virtual keyboard is visible and the shift key is pressed
-  const keyboard = VirtualKeyboard.singleton;
-  if (keyboard.visible && keyboard.isShifted) {
+  const keyboard = window.mathVirtualKeyboard;
+  if (keyboard?.visible && keyboard.isShifted) {
     graphemes =
       typeof graphemes === 'string'
         ? graphemes.toUpperCase()
@@ -652,7 +651,12 @@ function insertMathModeChar(
   if (mathfield.adoptStyle !== 'none') {
     // If adding an alphabetic character, and the neighboring atom is an
     // alphanumeric character, use the same variant/variantStyle (\mathit, \mathrm...)
-    const sibling = mathfield.adoptStyle === 'left' ? atom : atom.rightSibling;
+    const sibling =
+      mathfield.adoptStyle === 'left'
+        ? atom
+        : atom.parent
+        ? atom.rightSibling
+        : null;
     if (
       sibling?.type === 'mord' &&
       /[a-zA-Z0-9]/.test(sibling.value) &&
