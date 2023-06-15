@@ -1,3 +1,9 @@
+## 0.94.7 (2023-06-08)
+
+## Improvements
+
+- **#1989** Temporarily add back support for iOS versions older than 16.3.
+
 ## 0.94.6 (2023-05-25)
 
 ### Bug Fixes
