@@ -61,7 +61,7 @@ import {
   getCommandTarget,
 } from '../editor/commands';
 import {
-  MathfieldOptionsPrivate,
+  _MathfieldOptions,
   update as updateOptions,
   getDefault as getDefaultOptions,
   get as getOptions,
@@ -134,7 +134,7 @@ export class MathfieldPrivate implements Mathfield, KeyboardDelegateInterface {
 
   readonly undoManager: UndoManager;
 
-  options: Required<MathfieldOptionsPrivate>;
+  options: Required<_MathfieldOptions>;
 
   style: Style;
   // When inserting new characters, if not `"none"`, adopt the style
@@ -142,7 +142,6 @@ export class MathfieldPrivate implements Mathfield, KeyboardDelegateInterface {
   adoptStyle: 'left' | 'right' | 'none';
 
   dirty: boolean; // If true, need to be redrawn
-  smartModeSuppressed: boolean;
 
   element:
     | (HTMLElement & {
@@ -206,7 +205,7 @@ export class MathfieldPrivate implements Mathfield, KeyboardDelegateInterface {
    */
   constructor(
     element: HTMLElement & { mathfield?: MathfieldPrivate },
-    options: Partial<MathfieldOptionsPrivate> & {
+    options: Partial<_MathfieldOptions> & {
       eventSink?: HTMLElement;
     }
   ) {
@@ -255,9 +254,9 @@ export class MathfieldPrivate implements Mathfield, KeyboardDelegateInterface {
     let elementText = options.value ?? this.element.textContent ?? '';
     elementText = elementText.trim();
 
-    // The input mode (text, math, latex).
-    // It indicates the mode the next character typed will be interpreted in,
-    // which may be different from the mode of the current selection.
+    // The initial input mode (text or math): the mode the next character
+    // typed will be interpreted in, which may be different from the mode
+    // of the current selection.
     const mode = effectiveMode(this.options);
 
     // Setup the model
@@ -271,8 +270,6 @@ export class MathfieldPrivate implements Mathfield, KeyboardDelegateInterface {
       onSelectionDidChange: () => this.onSelectionDidChange(),
       onContentWillChange: (options) => this.onContentWillChange(options),
     });
-
-    this.smartModeSuppressed = false;
 
     // Prepare to manage undo/redo
     this.undoManager = new UndoManager(this.model);
@@ -592,7 +589,7 @@ If you are using Vue, this may be because you are using the runtime-only build o
     return keybindings;
   }
 
-  setOptions(config: Partial<MathfieldOptionsPrivate>): void {
+  setOptions(config: Partial<_MathfieldOptions>): void {
     this.options = { ...this.options, ...updateOptions(config) };
 
     this._keybindings = undefined;
@@ -600,6 +597,12 @@ If you are using Vue, this may be because you are using the runtime-only build o
     if (this.options.defaultMode === 'inline-math')
       this.element!.classList.add('ML__is-inline');
     else this.element!.classList.remove('ML__is-inline');
+
+    // The mode of the 'first' atom is the mode of the  expression when empty
+    let mode = this.options.defaultMode;
+    if (mode === 'inline-math') mode = 'math';
+    if (this.model.root.firstChild?.mode !== mode)
+      this.model.root.firstChild.mode = mode;
 
     if (this.options.readOnly) {
       if (this.hasFocus() && window.mathVirtualKeyboard.visible)
@@ -636,20 +639,18 @@ If you are using Vue, this may be because you are using the runtime-only build o
       requestUpdate(this);
   }
 
-  getOptions<K extends keyof MathfieldOptionsPrivate>(
+  getOptions<K extends keyof _MathfieldOptions>(
     keys: K[]
-  ): Pick<MathfieldOptionsPrivate, K>;
-  getOptions(): MathfieldOptionsPrivate;
+  ): Pick<_MathfieldOptions, K>;
+  getOptions(): _MathfieldOptions;
   getOptions(
-    keys?: keyof MathfieldOptionsPrivate | (keyof MathfieldOptionsPrivate)[]
-  ): any | Partial<MathfieldOptionsPrivate> {
+    keys?: keyof _MathfieldOptions | (keyof _MathfieldOptions)[]
+  ): any | Partial<_MathfieldOptions> {
     return getOptions(this.options, keys);
   }
 
-  getOption<K extends keyof MathfieldOptionsPrivate>(
-    key: K
-  ): MathfieldOptionsPrivate[K] {
-    return getOptions(this.options, key) as MathfieldOptionsPrivate[K];
+  getOption<K extends keyof _MathfieldOptions>(key: K): _MathfieldOptions[K] {
+    return getOptions(this.options, key) as _MathfieldOptions[K];
   }
 
   /*
@@ -970,8 +971,6 @@ If you are using Vue, this may be because you are using the runtime-only build o
       window.MathfieldElement.playSound('keypress');
     }
 
-    if (options.scrollIntoView) this.scrollIntoView();
-
     if (s === '\\\\') {
       // This string is interpreted as an "insert row after" command
       addRowAfter(this.model);
@@ -990,6 +989,8 @@ If you are using Vue, this may be because you are using the runtime-only build o
     this.snapshot(`insert-${this.model.at(this.model.position).type}`);
 
     requestUpdate(this);
+    if (options.scrollIntoView) this.scrollIntoView();
+
     return true;
   }
 
@@ -1027,10 +1028,6 @@ If you are using Vue, this may be because you are using the runtime-only build o
         let contentChanged = false;
         this.flushInlineShortcutBuffer();
         this.stopCoalescingUndo();
-        // Suppress (temporarily) smart mode if switching to/from text or math
-        // This prevents switching to/from command mode from suppressing smart mode.
-        this.smartModeSuppressed =
-          /text|math/.test(this.model.mode) && /text|math/.test(mode);
         if (prefix && mode !== 'latex') {
           const atoms = parseLatex(prefix, {
             context: this.context,

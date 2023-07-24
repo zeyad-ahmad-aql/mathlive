@@ -1,3 +1,49 @@
+## [Unreleased]
+
+### Improvements
+
+- **#2064**, **#2065** Improved behavior of virtual keyboard shift key, 
+  contributed by https://github.com/oscarhermoso
+
+### Bugs Fixed
+
+- **#1995** When right clicking to bring up the variant panel in the virtual 
+  keyboard, in some situations the virtual keyboard would lock up.
+- **#2047** Use `\exp` instead of `\mathrm{exp}` in the virtual keyboard
+- **#2067** When setting up the virtual keyboard policy to `"sandboxed"` in
+  a cross domain iframe, a runtime error would occur.
+
+## 0.95.0 (2023-07-04)
+
+
+### Improvements
+
+- Improved behavior when pressing the tab key
+- **#2015** New `environmentPopoverPolicy` option. Set to:
+  - `"auto"` to show environment popover when inside a tabular environment and
+    the virtual keyboard is visible (current behavior)
+  - `"on"` to show it when in a tabular environment
+  - `"off"` to never show it
+  
+### Bugs Fixed
+
+- **#2008** The `\underline` and `\overline` commands now render correctly.
+- **#1996**, **#2025** MathML output could occasionally be incorrect for the  
+  `\left...\right` command
+- **#2009** Chemical equations did not render correctly
+- **#1990** The closing delimiter of a `\left...\right` command was incorrectly
+  adopting the style of the last atom inside the command.
+- **#2044** When overflowing the mathfield using the virtual keyboard, the 
+  caret would be hidden from view.
+- **#2000**, **#2016** Correctly handle when the root is not a group, i.e. 
+  when it's a multi-line array.
+
+## 0.94.8 (2023-06-15)
+
+## Improvements
+
+- On RTL system, do not flip the direction of the virtual keyboard keycaps rows
+
 ## 0.94.7 (2023-06-08)
 
 ## Improvements
@@ -222,7 +268,7 @@
 ### Bug Fixes
 - Update editing toolbar when virtual keyboard is made visible
 - **#1919** Correctly position the popover panel above or below the mathfield based on the space available. Allow for more suggestions to be displayed, and include a scrollbar when necessary.
-
+  
 ## 0.91.1 (2023-04-05)
 
 ### Bug Fix
